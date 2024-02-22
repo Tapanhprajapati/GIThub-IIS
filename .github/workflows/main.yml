@@ -6,7 +6,7 @@ on:
       - master
 
 env:
-  GITHUB_WORKING_DIRECTORY: ''             # If you have a root folder in the GitHub code set otherwise leave it blank
+  GITHUB_WORKING_DIRECTORY: 'D:\GIThub-IIS\.github\workflows'             # If you have a root folder in the GitHub code set otherwise leave it blank
   IIS_WEBAPP_PATH: 'C:\Users\isms\Desktop\myapp'   # Web App Path from Virtual Machine         
   DOTNET_VERSION: '8.0.x'           # set this to the dot net version to use
 
