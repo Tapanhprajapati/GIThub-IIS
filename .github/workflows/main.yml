@@ -1,61 +1,49 @@
-name: "Build and Deploy - Self Hosted"
+name: Deploy to IIS
 
 on:
-  workflow_dispatch:
+  push:
     branches:
-      - master
-
-env:
-  GITHUB_WORKING_DIRECTORY: 'D:\GIThub-IIS\.github\workflows'             # If you have a root folder in the GitHub code set otherwise leave it blank
-  IIS_WEBAPP_PATH: 'C:\Users\isms\Desktop\myapp'   # Web App Path from Virtual Machine         
-  DOTNET_VERSION: '8.0.x'           # set this to the dot net version to use
+      - main
 
 jobs:
-  build:
-    runs-on: self-hosted 
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Setup .NET Core 
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Install dependencies
-        working-directory: ${{ env.GITHUB_WORKING_DIRECTORY }}
-        run: dotnet restore
-
-      - name: Build
-        working-directory: ${{ env.GITHUB_WORKING_DIRECTORY }}
-        run: dotnet build --configuration Release --no-restore 
-
-      - name: Publish
-        working-directory: ${{ env.GITHUB_WORKING_DIRECTORY }}
-        run: dotnet publish --configuration Release --output 'dotnetcorewebapp'
-
-      - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2.2.1
-        with:
-          name: application
-          path: '${{ env.GITHUB_WORKING_DIRECTORY }}/dotnetcorewebapp'
-
   deploy:
-    needs: build
     runs-on: self-hosted
 
     steps:
-    - name: Take application offline
-      run: New-Item -Type File -Name app_offline.htm -Path ${{ env.IIS_WEBAPP_PATH }} -Force
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    - name: Set Offline HTML file
-      run: Set-Content ${{ env.IIS_WEBAPP_PATH }}\app_offline.htm 'Site Under Maintenance'
+      - name: Build
+        run: dotnet publish -c Release -o <your-output-directory>
 
-    - name: Download new binaries over the top of the app
-      uses: actions/download-artifact@v2
-      with:
-        name: application
-        path: ${{ env.IIS_WEBAPP_PATH }}
+      - name: Deploy to IIS
+        run: |
+          # PowerShell script to deploy the application to IIS
+          # Adjust the parameters as per your requirements
 
-    - name: Bring the app back online
-      run: Remove-Item ${{ env.IIS_WEBAPP_PATH }}\app_offline.htm
+          # Import IIS module
+          Import-Module WebAdministration
+
+          # Define variables
+          $siteName = "<http://localhost/mywebserver/>"
+          $appPoolName = "<DefaultAppPool>"
+          $physicalPath = "<C:\Users\isms\Desktop\myapp>"
+
+          # Check if site already exists
+          $existingSite = Get-WebSite -Name $siteName -ErrorAction SilentlyContinue
+
+          # Create new application pool
+          $newAppPool = New-WebAppPool -Name $appPoolName
+
+          # Create new site if not exists
+          if (!$existingSite) {
+            New-WebSite -Name $siteName -PhysicalPath $physicalPath -ApplicationPool $newAppPool
+          } else {
+            Set-WebConfiguration -Filter '/system.applicationHost/sites/site[@name='$siteName']/application' -Value @{path='/';physicalPath=$physicalPath}
+          }
+
+          # Start site
+          Start-WebSite -Name $siteName
+
+          # Restart app pool
+          Restart-WebAppPool -Name $appPoolName
