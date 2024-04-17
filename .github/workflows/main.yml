@@ -1,49 +1,67 @@
-name: Deploy to IIS
+name: AspNetCoreAPI
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
 
 jobs:
-  deploy:
-    runs-on: self-hosted
+  build:    
+    runs-on: [self-hosted]
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+    - uses: actions/checkout@v1
 
-      - name: Build
-        run: dotnet publish C:\Users\isms\Desktop\myapp\webapp.csproj -c Release -o C:/Users/isms/Desktop/myapp/
+    - name: Set up .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
 
-      - name: Deploy to IIS
-        run: |
-          # PowerShell script to deploy the application to IIS
-          # Adjust the parameters as per your requirements
+    - name: Build with dotnet
+      run: dotnet build src\AspNetCoreAPI-GitHubAction.Api\AspNetCoreAPI-GitHubAction.Api.csproj --configuration Release
 
-          # Import IIS module
-          Import-Module WebAdministration
+  test:
+    needs: build
+    runs-on: [self-hosted]
 
-          # Define variables
-          $siteName = "<http://localhost/mywebserver/>"
-          $appPoolName = "<DefaultAppPool>"
-          $physicalPath = "<C:\Users\isms\Desktop\myapp>"
+    steps:
+    - name: Test
+      run: dotnet test src\AspNetCoreAPI-GitHubAction.Test
 
-          # Check if site already exists
-          $existingSite = Get-WebSite -Name $siteName -ErrorAction SilentlyContinue
+  deploy:
+    needs: test
+    runs-on: [self-hosted]
+    
+    steps:
+    - name: Project publish
+      run: dotnet publish -c Release src\AspNetCoreAPI-GitHubAction.Api\AspNetCoreAPI-GitHubAction.Api.csproj -o ${{env.DOTNET_ROOT}}/AspNetCoreAPI
 
-          # Create new application pool
-          $newAppPool = New-WebAppPool -Name $appPoolName
-
-          # Create new site if not exists
-          if (!$existingSite) {
-            New-WebSite -Name $siteName -PhysicalPath $physicalPath -ApplicationPool $newAppPool
-          } else {
-            Set-WebConfiguration -Filter '/system.applicationHost/sites/site[@name='$siteName']/application' -Value @{path='/';physicalPath=$physicalPath}
-          }
-
-          # Start site
-          Start-WebSite -Name $siteName
-
-          # Restart app pool
-          Restart-WebAppPool -Name $appPoolName
+    - name: Deploy to IIS
+      run: |
+        if ((Get-WebSiteState -Name AspNetCoreAPI).Value -eq "Started")
+        {
+            Stop-WebSite -Name AspNetCoreAPI
+            echo "Stopped Website AspNetCoreAPI"
+        }
+        if ((Get-WebAppPoolState -Name AspNetCoreAPI).Value -eq "Started")
+        {
+            Stop-WebAppPool -Name AspNetCoreAPI
+            echo "Stopped Application Pool AspNetCoreAPI"
+        }
+        
+        Start-Sleep -s 15        
+        Copy-Item ${{env.DOTNET_ROOT}}/AspNetCoreAPI/* C:\inetpub\wwwroot\AspNetCoreAPI -Recurse -Force
+        
+        if ((Get-WebSiteState -Name AspNetCoreAPI).Value -eq "Stopped")
+        {
+            Start-WebSite -Name AspNetCoreAPI
+            echo "Started Website AspNetCoreAPI"
+        }
+        if ((Get-WebAppPoolState -Name AspNetCoreAPI).Value -eq "Stopped")
+        {
+            Start-WebAppPool -Name AspNetCoreAPI
+            echo "Started Application Pool AspNetCoreAPI"
+        }
+        
+        if ($lastexitcode -lt 8) { $global:lastexitcode = 0 }
